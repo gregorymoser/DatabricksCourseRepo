@@ -5,6 +5,20 @@ v_data_source
 
 # COMMAND ----------
 
+dbutils.widgets.text("p_file_date","2021-03-21")
+v_file_date = dbutils.widgets.get("p_file_date")
+
+
+# COMMAND ----------
+
+# MAGIC %run "../Includes/configuration"
+
+# COMMAND ----------
+
+# MAGIC %run "../Includes/common_functions"
+
+# COMMAND ----------
+
 from pyspark.sql.types import StructType, StructField, StringType, IntegerType, StringType, DateType
 
 # COMMAND ----------
@@ -21,22 +35,26 @@ races_schema = StructType(fields=[StructField("raceId", IntegerType(), False),
 
 # COMMAND ----------
 
-display(dbutils.fs.mounts())
+# display(dbutils.fs.mounts())
 
 # COMMAND ----------
 
-# MAGIC %fs
-# MAGIC ls /mnt/formula1dlaux/processed
+# %fs
+# ls /mnt/formula1dlaux/processed
 
 # COMMAND ----------
+
+# races_df = spark.read.option("header",True) \
+#     .schema(races_schema) \
+#     .csv("/mnt/formula1dlaux/raw/races.csv")
 
 races_df = spark.read.option("header",True) \
     .schema(races_schema) \
-    .csv("/mnt/formula1dlaux/raw/races.csv")
+    .csv(f"{raw_folder_path}/{v_file_date}/races.csv")
 
 # COMMAND ----------
 
-display(races_df)
+# display(races_df)
 
 # COMMAND ----------
 
@@ -44,13 +62,23 @@ from pyspark.sql.functions import current_timestamp, to_timestamp, concat, col, 
 
 # COMMAND ----------
 
+# races_with_timestamp_df = races_df.withColumn("ingestion_date", current_timestamp()) \
+#     .withColumn("race_timestamp", to_timestamp(concat(col('date'), lit(' '), col('time')), 'yyyy-MM-dd HH:mm:ss')) \
+#     .withColumn('data_source', lit(v_data_source))
+
 races_with_timestamp_df = races_df.withColumn("ingestion_date", current_timestamp()) \
     .withColumn("race_timestamp", to_timestamp(concat(col('date'), lit(' '), col('time')), 'yyyy-MM-dd HH:mm:ss')) \
-    .withColumn('data_source', lit(v_data_source))
+    .withColumn('data_source', lit(v_data_source)) \
+    .withColumn('file_date', lit(v_file_date))
+
 
 # COMMAND ----------
 
-display(races_with_timestamp_df)
+# display(races_with_timestamp_df)
+
+# COMMAND ----------
+
+races_with_ingestion_date_df = add_ingestion_date(races_with_timestamp_df)
 
 # COMMAND ----------
 
@@ -65,20 +93,32 @@ races_selected_df = races_with_timestamp_df.select(col("raceId").alias("race_id"
 
 # COMMAND ----------
 
-display(races_selected_df)
+# display(races_selected_df)
 
 # COMMAND ----------
 
-races_selected_df.write.mode("overwrite").partitionBy("race_year").parquet("/mnt/formula1dlaux/processed/races")
+# races_selected_df.write.mode("overwrite").partitionBy("race_year").parquet("/mnt/formula1dlaux/processed/races")
+
+# races_selected_df.write.mode("overwrite") \
+#     .partitionBy("race_year") \
+#     .format("parquet") \
+#     .saveAsTable("f1_processed.races")
+
+races_selected_df.write.mode("overwrite").partitionBy('race_year').format("delta").saveAsTable("f1_processed.races")
 
 # COMMAND ----------
 
-# MAGIC %fs
-# MAGIC ls /mnt/formula1dlaux/processed/races
+# %fs
+# ls /mnt/formula1dlaux/processed/races
 
 # COMMAND ----------
 
-display(spark.read.parquet("/mnt/formula1dlaux/processed/races"))
+# display(spark.read.parquet("/mnt/formula1dlaux/processed/races"))
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC SELECT * FROM f1_processed.races;
 
 # COMMAND ----------
 
