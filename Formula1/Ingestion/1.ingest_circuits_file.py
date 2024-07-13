@@ -1,6 +1,6 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC ### Ingest circuits.csv File
+# MAGIC ### Ingest Circuits CSV File
 
 # COMMAND ----------
 
@@ -25,11 +25,20 @@ v_data_source
 
 # COMMAND ----------
 
-# MAGIC %run "../includes/configuration"
+dbutils.widgets.text("p_file_date","2021-03-21")
+v_file_date = dbutils.widgets.get("p_file_date")
 
 # COMMAND ----------
 
-# MAGIC %run "../includes/common_functions"
+v_file_date
+
+# COMMAND ----------
+
+# MAGIC %run "../Includes/configuration"
+
+# COMMAND ----------
+
+# MAGIC %run "../Includes/common_functions"
 
 # COMMAND ----------
 
@@ -63,10 +72,29 @@ display(dbutils.fs.mounts())
 
 # COMMAND ----------
 
+# circuits_df = spark.read.csv("dbfs:/mnt/formula1dlaux/raw/circuits.csv")
+# circuits_df = spark.read.option("header", True).csv("dbfs:/mnt/formula1dlaux/raw/circuits.csv")
+# InferSchema -> infers the input schema automatically from data
+
+# circuits_df = spark.read \
+# .option("header", True) \
+# .option("inferSchema", True) \
+# .csv("dbfs:/mnt/formula1dlaux/raw/circuits.csv")
+
+# circuits_df = spark.read \
+# .option("header", True) \
+# .schema(circuits_schema) \
+# .csv("dbfs:/mnt/formula1dlaux/raw/circuits.csv")
+
+# circuits_df = spark.read \
+# .option("header", True) \
+# .schema(circuits_schema) \
+# .csv(f"{raw_folder_path}/circuits.csv")
+
 circuits_df = spark.read \
 .option("header", True) \
 .schema(circuits_schema) \
-.csv(f"{raw_folder_path}/circuits.csv")
+.csv(f"{raw_folder_path}/{v_file_date}/circuits.csv")
 
 # COMMAND ----------
 
@@ -78,15 +106,15 @@ display(circuits_df)
 
 # COMMAND ----------
 
-circuits_df.show(n=10, truncate=True, vertical=False)
+# circuits_df.show(n=10, truncate=True, vertical=False)
 
 # COMMAND ----------
 
-circuits_df.printSchema()
+# circuits_df.printSchema()
 
 # COMMAND ----------
 
-circuits_df.describe().show(truncate=False)
+# circuits_df.describe().show(truncate=False)
 
 # COMMAND ----------
 
@@ -150,12 +178,21 @@ from pyspark.sql.functions import lit
 
 # COMMAND ----------
 
+'''
 circuits_renamed_df = circuits_select_df.withColumnRenamed('circuitId', 'circuit_id') \
     .withColumnRenamed('circuitRef', 'circuit_ref') \
     .withColumnRenamed('lat', 'latitude') \
     .withColumnRenamed('lng', 'longitude') \
     .withColumnRenamed('alt', 'altitude') \
     .withColumn('data_source', lit(v_data_source))
+'''
+circuits_renamed_df = circuits_select_df.withColumnRenamed('circuitId', 'circuit_id') \
+    .withColumnRenamed('circuitRef', 'circuit_ref') \
+    .withColumnRenamed('lat', 'latitude') \
+    .withColumnRenamed('lng', 'longitude') \
+    .withColumnRenamed('alt', 'altitude') \
+    .withColumn('data_source', lit(v_data_source)) \
+    .withColumn('file_date', lit(v_file_date))
 
 # COMMAND ----------
 
@@ -172,6 +209,14 @@ from pyspark.sql.functions import current_timestamp, lit
 
 # COMMAND ----------
 
+'''
+example of lit value
+circuits_final_df = circuits_renamed_df.withColumn('ingestion_date', current_timestamp()) \
+    .withColumn('env', lit('Production'))
+
+circuits_final_df = circuits_renamed_df.withColumn('ingestion_date', current_timestamp())
+'''
+
 circuits_final_df = add_ingestion_date(circuits_renamed_df)
 
 # COMMAND ----------
@@ -185,14 +230,21 @@ display(circuits_final_df)
 
 # COMMAND ----------
 
+# circuits_final_df.write.parquet("/mnt/formula1dlaux/processed/circuits")
+# circuits_final_df.write.mode("overwrite").parquet("/mnt/formula1dlaux/processed/circuits")
 # circuits_final_df.write.mode("overwrite").parquet(f"{processed_folder_path}/circuits")
+# circuits_final_df.write.mode("overwrite") \
+#     .format("parquet") \
+#     .saveAsTable("f1_processed.circuits")
+
+circuits_final_df.write.mode("overwrite") \
+    .format("delta") \
+    .saveAsTable("f1_processed.circuits")
 
 # COMMAND ----------
 
-'''
-%fs
-ls /mnt/formula1dlaux/processed/circuits
-'''
+# MAGIC %fs
+# MAGIC ls /mnt/formula1dlaux/processed/circuits
 
 # COMMAND ----------
 
@@ -204,4 +256,9 @@ ls /mnt/formula1dlaux/processed/circuits
 
 # COMMAND ----------
 
-# dbutils.notebook.exit("Success")
+# MAGIC %sql
+# MAGIC SELECT * FROM f1_processed.circuits;
+
+# COMMAND ----------
+
+dbutils.notebook.exit("Success")
